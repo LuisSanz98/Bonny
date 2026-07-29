@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Glucemia Perro</title>
+<meta name="theme-color" content="#1b6d6d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Glucemia Perro">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  :root{
+    --bg:#f4f6f6; --card:#ffffff; --text:#16211f; --muted:#5b6866; --border:#e1e6e5;
+    --accent:#1b6d6d; --accent-2:#0f4f4f; --danger:#c0392b; --warn:#b8860b; --ok:#1e8e3e;
+    --tab-inactive:#8a9694;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#121816; --card:#1a2220; --text:#eef2f1; --muted:#93a19e; --border:#2a332f;
+      --accent:#39a3a3; --accent-2:#2c8080; --danger:#ff6b5e; --warn:#e0b23c; --ok:#4fd07c; --tab-inactive:#5d6a67; }
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    padding-bottom:calc(64px + env(safe-area-inset-bottom));
+    min-height:100vh;
+  }
+  header.top{
+    position:sticky; top:0; z-index:10;
+    background:var(--accent); color:#fff;
+    padding:calc(10px + env(safe-area-inset-top)) 16px 10px;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  header.top h1{font-size:17px; margin:0; font-weight:700;}
+  header.top select{
+    background:rgba(255,255,255,.18); color:#fff; border:1px solid rgba(255,255,255,.4);
+    border-radius:8px; padding:6px 8px; font-size:14px; max-width:40vw;
+  }
+  header.top select option{color:#000;}
+  main{padding:14px; max-width:640px; margin:0 auto;}
+  .view{display:none;}
+  .view.active{display:block;}
+  .card{
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:14px; margin-bottom:12px;
+  }
+  .card h2{font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 10px;}
+  .big-value{font-size:38px; font-weight:800; line-height:1;}
+  .row{display:flex; align-items:baseline; justify-content:space-between; gap:10px;}
+  .muted{color:var(--muted); font-size:13px;}
+  .pill{display:inline-block; padding:3px 9px; border-radius:999px; font-size:12px; font-weight:700;}
+  .pill.ok{background:rgba(30,142,66,.15); color:var(--ok);}
+  .pill.warn{background:rgba(184,134,11,.18); color:var(--warn);}
+  .pill.danger{background:rgba(192,57,43,.15); color:var(--danger);}
+  .reminder-item{display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--border);}
+  .reminder-item:last-child{border-bottom:none;}
+  .reminder-time{font-weight:700; font-size:15px;}
+  .quick-actions{display:flex; gap:8px; margin-bottom:12px;}
+  .quick-actions button{flex:1;}
+  button, .btn{
+    font-size:15px; font-weight:600; border:none; border-radius:10px; padding:11px 14px;
+    background:var(--accent); color:#fff; cursor:pointer;
+  }
+  button.secondary{background:transparent; color:var(--accent); border:1.5px solid var(--accent);}
+  button.small{padding:6px 10px; font-size:13px; border-radius:8px;}
+  button.icon-btn{background:transparent; color:var(--muted); padding:4px 8px; font-size:16px;}
+  button.danger{background:var(--danger);}
+  form .field{margin-bottom:10px;}
+  label{display:block; font-size:13px; color:var(--muted); margin-bottom:4px;}
+  input, select, textarea{
+    width:100%; font-size:16px; padding:10px; border-radius:10px; border:1px solid var(--border);
+    background:var(--bg); color:var(--text);
+  }
+  textarea{min-height:70px; resize:vertical;}
+  .seg{display:flex; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
+  .seg button{flex:1; background:transparent; color:var(--text); border-radius:0; font-weight:600;}
+  .seg button.active{background:var(--accent); color:#fff;}
+  .list-item{padding:10px 0; border-bottom:1px solid var(--border);}
+  .list-item:last-child{border-bottom:none;}
+  .list-item .top-row{display:flex; justify-content:space-between; gap:8px; align-items:baseline;}
+  .list-item .meta{font-size:12px; color:var(--muted); margin-top:2px;}
+  .chart-toggle{display:flex; gap:6px; margin-bottom:10px;}
+  .chart-toggle button{flex:1;}
+  canvas{width:100%; height:180px; display:block;}
+  nav.tabbar{
+    position:fixed; bottom:0; left:0; right:0; z-index:10;
+    background:var(--card); border-top:1px solid var(--border);
+    display:flex; padding-bottom:env(safe-area-inset-bottom);
+  }
+  nav.tabbar button{
+    flex:1; background:none; border:none; color:var(--tab-inactive);
+    padding:9px 2px 8px; font-size:11px; display:flex; flex-direction:column; align-items:center; gap:3px;
+    border-radius:0;
+  }
+  nav.tabbar button .ic{font-size:20px;}
+  nav.tabbar button.active{color:var(--accent);}
+  .empty{color:var(--muted); font-size:14px; padding:8px 0;}
+  .toast{
+    position:fixed; bottom:80px; left:50%; transform:translateX(-50%);
+    background:var(--accent-2); color:#fff; padding:10px 16px; border-radius:999px; font-size:14px;
+    opacity:0; pointer-events:none; transition:opacity .25s; z-index:20; white-space:nowrap;
+  }
+  .toast.show{opacity:1;}
+  .filter-row{display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;}
+  .filter-row button{background:transparent; color:var(--muted); border:1px solid var(--border); padding:6px 10px; font-size:13px;}
+  .filter-row button.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+  .setup-screen{max-width:420px; margin:40px auto; padding:20px;}
+</style>
+</head>
+<body>
+
+<div id="setupScreen" class="setup-screen" style="display:none">
+  <h1>Configura la conexión</h1>
+  <p class="muted">Pega aquí la URL y la clave "anon public" de tu proyecto de Supabase (Settings &gt; API). Solo hace falta una vez por dispositivo.</p>
+  <form id="setupForm">
+    <div class="field">
+      <label>Project URL</label>
+      <input id="setupUrl" placeholder="https://xxxx.supabase.co" required>
+    </div>
+    <div class="field">
+      <label>Anon public key</label>
+      <input id="setupKey" placeholder="eyJhbGciOi..." required>
+    </div>
+    <button type="submit">Guardar y entrar</button>
+  </form>
+</div>
+
+<div id="app" style="display:none">
+<header class="top">
+  <h1>🐾 Glucemia</h1>
+  <select id="caregiverSelect"></select>
+</header>
+
+<main>
+
+  <div class="view active" id="view-inicio">
+    <div class="quick-actions">
+      <button onclick="goTo('glucemia')">+ Glucemia</button>
+      <button onclick="quickAddFeeding('insulina')">+ Insulina</button>
+      <button onclick="quickAddFeeding('comida')">+ Comida</button>
+    </div>
+
+    <div class="card">
+      <h2>Última glucemia</h2>
+      <div id="lastGlucoseBox"></div>
+    </div>
+
+    <div class="card">
+      <h2>Última comida / insulina</h2>
+      <div id="lastFeedingBox"></div>
+    </div>
+
+    <div class="card">
+      <h2>Recordatorios de hoy</h2>
+      <div id="remindersBox"></div>
+    </div>
+
+    <div class="card">
+      <h2>Notas recientes</h2>
+      <div id="recentNotesBox"></div>
+    </div>
+  </div>
+
+  <div class="view" id="view-glucemia">
+    <div class="card">
+      <h2>Nueva lectura</h2>
+      <form id="glucoseForm">
+        <div class="field">
+          <label>Valor (mg/dL)</label>
+          <input type="number" step="1" id="glucoseValue" required>
+        </div>
+        <div class="field">
+          <label>Fecha y hora</label>
+          <input type="datetime-local" id="glucoseTime" required>
+        </div>
+        <div class="field">
+          <label>Notas (opcional)</label>
+          <input type="text" id="glucoseNotes" placeholder="p.ej. antes de comer">
+        </div>
+        <button type="submit">Guardar lectura</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Tendencia</h2>
+      <div class="chart-toggle">
+        <button class="small range-btn active" data-range="7">7 días</button>
+        <button class="small range-btn" data-range="30">30 días</button>
+        <button class="small range-btn" data-range="90">90 días</button>
+      </div>
+      <canvas id="glucoseChart"></canvas>
+      <div class="row muted" style="margin-top:6px">
+        <span>Rango objetivo:</span>
+        <span>
+          <input type="number" id="rangeMin" style="width:60px; display:inline-block; padding:4px 6px;">
+          –
+          <input type="number" id="rangeMax" style="width:60px; display:inline-block; padding:4px 6px;">
+          mg/dL
+        </span>
+      </div>
+      <p class="muted" style="margin-top:6px">Ajusta el rango objetivo según lo que os indique el veterinario. Se guarda solo en este dispositivo.</p>
+    </div>
+
+    <div class="card">
+      <h2>Historial</h2>
+      <div id="glucoseList"></div>
+    </div>
+  </div>
+
+  <div class="view" id="view-comidas">
+    <div class="card">
+      <h2>Nuevo registro</h2>
+      <form id="feedingForm">
+        <div class="field">
+          <label>Tipo</label>
+          <div class="seg" id="feedingKindSeg">
+            <button type="button" data-kind="comida" class="active">Comida</button>
+            <button type="button" data-kind="insulina">Insulina</button>
+          </div>
+        </div>
+        <div class="field" id="insulinUnitsField" style="display:none">
+          <label>Unidades de insulina</label>
+          <input type="number" step="0.5" id="insulinUnits">
+        </div>
+        <div class="field">
+          <label>Descripción</label>
+          <input type="text" id="feedingDescription" placeholder="p.ej. pienso 200g">
+        </div>
+        <div class="field">
+          <label>Fecha y hora</label>
+          <input type="datetime-local" id="feedingTime" required>
+        </div>
+        <button type="submit">Guardar</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Historial</h2>
+      <div class="filter-row" id="feedingFilter">
+        <button data-filter="todos" class="active">Todos</button>
+        <button data-filter="comida">Comidas</button>
+        <button data-filter="insulina">Insulina</button>
+      </div>
+      <div id="feedingList"></div>
+    </div>
+  </div>
+
+  <div class="view" id="view-notas">
+    <div class="card">
+      <h2>Nueva nota</h2>
+      <form id="noteForm">
+        <div class="field">
+          <label>Categoría</label>
+          <select id="noteCategory">
+            <option value="general">General</option>
+            <option value="sintoma">Síntoma</option>
+            <option value="veterinario">Veterinario</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Nota</label>
+          <textarea id="noteText" required placeholder="Escribe aquí..."></textarea>
+        </div>
+        <button type="submit">Guardar nota</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Historial</h2>
+      <div class="filter-row" id="noteFilter">
+        <button data-filter="todas" class="active">Todas</button>
+        <button data-filter="general">General</button>
+        <button data-filter="sintoma">Síntomas</button>
+        <button data-filter="veterinario">Veterinario</button>
+      </div>
+      <div id="noteList"></div>
+    </div>
+  </div>
+
+  <div class="view" id="view-ajustes">
+    <div class="card">
+      <h2>Cuidadores</h2>
+      <div id="caregiverList"></div>
+      <form id="caregiverForm" style="margin-top:10px; display:flex; gap:8px;">
+        <input type="text" id="newCaregiverName" placeholder="Nombre nuevo cuidador" style="flex:1">
+        <button type="submit" class="small">Añadir</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Recordatorios habituales</h2>
+      <div id="reminderList"></div>
+      <form id="reminderForm" style="margin-top:12px;">
+        <div class="field">
+          <label>Etiqueta</label>
+          <input type="text" id="reminderLabel" placeholder="p.ej. Insulina mañana" required>
+        </div>
+        <div class="field">
+          <label>Hora</label>
+          <input type="time" id="reminderTime" required>
+        </div>
+        <div class="field">
+          <label>Tipo</label>
+          <select id="reminderKind">
+            <option value="insulina">Insulina</option>
+            <option value="comida">Comida</option>
+            <option value="glucemia">Glucemia</option>
+          </select>
+        </div>
+        <button type="submit" class="small">Añadir recordatorio</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Acerca de</h2>
+      <p class="muted">Los datos se guardan en una base de datos compartida (Supabase) y se sincronizan al instante entre todos los cuidadores que tengan el enlace. No hay contraseñas individuales: trata el enlace de esta app como algo privado de la familia.</p>
+    </div>
+  </div>
+
+</main>
+
+<nav class="tabbar">
+  <button class="tab-btn active" data-view="inicio"><span class="ic">🏠</span>Inicio</button>
+  <button class="tab-btn" data-view="glucemia"><span class="ic">🩸</span>Glucemia</button>
+  <button class="tab-btn" data-view="comidas"><span class="ic">🍽️</span>Comidas</button>
+  <button class="tab-btn" data-view="notas"><span class="ic">📝</span>Notas</button>
+  <button class="tab-btn" data-view="ajustes"><span class="ic">⚙️</span>Ajustes</button>
+</nav>
+
+<div class="toast" id="toast"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+// ---- Configuración de Supabase ----
+// Rellena estos dos valores con los de tu proyecto (Settings > API).
+// Si los dejas vacíos, la app pedirá configurarlos una vez por dispositivo.
+const BUILT_IN_SUPABASE_URL = "https://mehnlxmztmfkkxfmznpa.supabase.co";
+const BUILT_IN_SUPABASE_ANON_KEY = "sb_publishable_gLpuotyWzcDcsHsPx6bztA_UeeElc4E";
+
+let SUPABASE_URL = BUILT_IN_SUPABASE_URL || localStorage.getItem('sb_url') || "";
+let SUPABASE_ANON_KEY = BUILT_IN_SUPABASE_ANON_KEY || localStorage.getItem('sb_key') || "";
+
+let sb = null;
+let state = { caregivers: [], glucose: [], feedings: [], notes: [], reminders: [] };
+let currentGlucoseRange = 7;
+
+function initSupabase(){
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+
+function boot(){
+  if(!SUPABASE_URL || !SUPABASE_ANON_KEY){
+    document.getElementById('setupScreen').style.display = 'block';
+    document.getElementById('app').style.display = 'none';
+    return;
+  }
+  document.getElementById('setupScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  initSupabase();
+  loadRangePrefs();
+  loadAll();
+  subscribeRealtime();
+}
+
+document.getElementById('setupForm').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  const url = document.getElementById('setupUrl').value.trim();
+  const key = document.getElementById('setupKey').value.trim();
+  if(!url || !key) return;
+  localStorage.setItem('sb_url', url);
+  localStorage.setItem('sb_key', key);
+  SUPABASE_URL = url; SUPABASE_ANON_KEY = key;
+  boot();
+});
+
+// ---------- Utilidades ----------
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+function toLocalInputValue(date){
+  const d = new Date(date);
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function nowLocalInputValue(){ return toLocalInputValue(new Date()); }
+
+function relativeTime(iso){
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMin = Math.round(diffMs/60000);
+  if(diffMin < 1) return 'ahora mismo';
+  if(diffMin < 60) return `hace ${diffMin} min`;
+  const diffH = Math.round(diffMin/60);
+  if(diffH < 24) return `hace ${diffH} h`;
+  const diffD = Math.round(diffH/24);
+  return `hace ${diffD} d`;
+}
+
+function formatDateTime(iso){
+  const d = new Date(iso);
+  return d.toLocaleString('es-ES', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'});
+}
+
+function currentCaregiver(){
+  return localStorage.getItem('caregiver_name') || '';
+}
+
+function loadRangePrefs(){
+  document.getElementById('rangeMin').value = localStorage.getItem('range_min') || 100;
+  document.getElementById('rangeMax').value = localStorage.getItem('range_max') || 250;
+}
+document.getElementById('rangeMin').addEventListener('change', e=>{ localStorage.setItem('range_min', e.target.value); drawGlucoseChart(); });
+document.getElementById('rangeMax').addEventListener('change', e=>{ localStorage.setItem('range_max', e.target.value); drawGlucoseChart(); });
+
+// ---------- Navegación ----------
+function goTo(view){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+view).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
+  if(view === 'glucemia') drawGlucoseChart();
+}
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>goTo(btn.dataset.view));
+});
+
+// ---------- Carga de datos ----------
+async function loadAll(){
+  await Promise.all([loadCaregivers(), loadGlucose(), loadFeedings(), loadNotes(), loadReminders()]);
+  renderDashboard();
+}
+
+async function loadCaregivers(){
+  const {data, error} = await sb.from('caregivers').select('*').order('name');
+  if(error){ console.error(error); return; }
+  state.caregivers = data || [];
+  renderCaregiverSelect();
+  renderCaregiverList();
+}
+
+async function loadGlucose(){
+  const {data, error} = await sb.from('glucose_readings').select('*').order('measured_at', {ascending:false}).limit(500);
+  if(error){ console.error(error); return; }
+  state.glucose = data || [];
+  renderGlucoseList();
+  drawGlucoseChart();
+  renderDashboard();
+}
+
+async function loadFeedings(){
+  const {data, error} = await sb.from('feedings').select('*').order('given_at', {ascending:false}).limit(500);
+  if(error){ console.error(error); return; }
+  state.feedings = data || [];
+  renderFeedingList();
+  renderDashboard();
+}
+
+async function loadNotes(){
+  const {data, error} = await sb.from('notes').select('*').order('created_at', {ascending:false}).limit(500);
+  if(error){ console.error(error); return; }
+  state.notes = data || [];
+  renderNoteList();
+  renderDashboard();
+}
+
+async function loadReminders(){
+  const {data, error} = await sb.from('reminders').select('*').order('time_of_day');
+  if(error){ console.error(error); return; }
+  state.reminders = data || [];
+  renderReminderList();
+  renderDashboard();
+}
+
+function subscribeRealtime(){
+  sb.channel('db-changes')
+    .on('postgres_changes', {event:'*', schema:'public', table:'caregivers'}, loadCaregivers)
+    .on('postgres_changes', {event:'*', schema:'public', table:'glucose_readings'}, loadGlucose)
+    .on('postgres_changes', {event:'*', schema:'public', table:'feedings'}, loadFeedings)
+    .on('postgres_changes', {event:'*', schema:'public', table:'notes'}, loadNotes)
+    .on('postgres_changes', {event:'*', schema:'public', table:'reminders'}, loadReminders)
+    .subscribe();
+}
+
+// ---------- Cuidadores ----------
+function renderCaregiverSelect(){
+  const sel = document.getElementById('caregiverSelect');
+  const current = currentCaregiver();
+  sel.innerHTML = '<option value="">¿Quién eres?</option>' +
+    state.caregivers.map(c=>`<option value="${escapeHtml(c.name)}" ${c.name===current?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+}
+document.getElementById('caregiverSelect').addEventListener('change', e=>{
+  localStorage.setItem('caregiver_name', e.target.value);
+});
+
+function renderCaregiverList(){
+  const box = document.getElementById('caregiverList');
+  if(!state.caregivers.length){ box.innerHTML = '<div class="empty">Todavía no hay cuidadores. Añade el primero abajo.</div>'; return; }
+  box.innerHTML = state.caregivers.map(c=>`
+    <div class="list-item top-row">
+      <span>${escapeHtml(c.name)}</span>
+      <button class="icon-btn" onclick="deleteCaregiver('${c.id}')">✕</button>
+    </div>`).join('');
+}
+document.getElementById('caregiverForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const input = document.getElementById('newCaregiverName');
+  const name = input.value.trim();
+  if(!name) return;
+  const {error} = await sb.from('caregivers').insert({name});
+  if(error){ showToast('Error: ' + error.message); return; }
+  input.value='';
+  showToast('Cuidador añadido');
+});
+async function deleteCaregiver(id){
+  if(!confirm('¿Eliminar este cuidador?')) return;
+  await sb.from('caregivers').delete().eq('id', id);
+}
+
+// ---------- Glucemia ----------
+document.getElementById('glucoseTime').value = nowLocalInputValue();
+document.getElementById('glucoseForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const value = parseFloat(document.getElementById('glucoseValue').value);
+  const time = document.getElementById('glucoseTime').value;
+  const notes = document.getElementById('glucoseNotes').value.trim();
+  if(!currentCaregiver()){ showToast('Elige quién eres arriba'); return; }
+  const {error} = await sb.from('glucose_readings').insert({
+    value_mgdl: value,
+    measured_at: new Date(time).toISOString(),
+    caregiver_name: currentCaregiver(),
+    notes: notes || null
+  });
+  if(error){ showToast('Error: ' + error.message); return; }
+  e.target.reset();
+  document.getElementById('glucoseTime').value = nowLocalInputValue();
+  showToast('Lectura guardada');
+});
+
+function renderGlucoseList(){
+  const box = document.getElementById('glucoseList');
+  if(!state.glucose.length){ box.innerHTML = '<div class="empty">Sin lecturas todavía.</div>'; return; }
+  box.innerHTML = state.glucose.slice(0,100).map(g=>`
+    <div class="list-item">
+      <div class="top-row">
+        <strong>${g.value_mgdl} mg/dL</strong>
+        <button class="icon-btn" onclick="deleteRow('glucose_readings','${g.id}')">✕</button>
+      </div>
+      <div class="meta">${formatDateTime(g.measured_at)} · ${escapeHtml(g.caregiver_name)}${g.notes ? ' · ' + escapeHtml(g.notes) : ''}</div>
+    </div>`).join('');
+}
+
+document.querySelectorAll('.range-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.range-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentGlucoseRange = parseInt(btn.dataset.range,10);
+    drawGlucoseChart();
+  });
+});
+
+function drawGlucoseChart(){
+  const canvas = document.getElementById('glucoseChart');
+  if(!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cssWidth = canvas.clientWidth || canvas.parentElement.clientWidth;
+  const cssHeight = 180;
+  canvas.width = cssWidth * dpr;
+  canvas.height = cssHeight * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssWidth,cssHeight);
+
+  const cutoff = Date.now() - currentGlucoseRange*24*3600*1000;
+  const points = state.glucose
+    .filter(g => new Date(g.measured_at).getTime() >= cutoff)
+    .slice().reverse();
+
+  const styles = getComputedStyle(document.documentElement);
+  const textColor = styles.getPropertyValue('--muted').trim();
+  const lineColor = styles.getPropertyValue('--accent').trim();
+  const bandColor = 'rgba(30,142,66,0.12)';
+
+  const padL = 34, padR = 8, padT = 10, padB = 18;
+  const plotW = cssWidth - padL - padR;
+  const plotH = cssHeight - padT - padB;
+
+  const rangeMin = parseFloat(document.getElementById('rangeMin').value) || 100;
+  const rangeMax = parseFloat(document.getElementById('rangeMax').value) || 250;
+
+  if(!points.length){
+    ctx.fillStyle = textColor;
+    ctx.font = '13px -apple-system, sans-serif';
+    ctx.fillText('Sin datos en este periodo', padL, cssHeight/2);
+    return;
+  }
+
+  const values = points.map(p=>p.value_mgdl);
+  let minV = Math.min(...values, rangeMin) - 20;
+  let maxV = Math.max(...values, rangeMax) + 20;
+  const times = points.map(p=>new Date(p.measured_at).getTime());
+  const minT = Math.min(...times), maxT = Math.max(...times);
+  const spanT = Math.max(maxT - minT, 1);
+
+  const xFor = t => padL + ((t-minT)/spanT) * plotW;
+  const yFor = v => padT + (1 - (v-minV)/(maxV-minV)) * plotH;
+
+  // banda objetivo
+  ctx.fillStyle = bandColor;
+  ctx.fillRect(padL, yFor(rangeMax), plotW, yFor(rangeMin)-yFor(rangeMax));
+
+  // ejes simples
+  ctx.strokeStyle = textColor;
+  ctx.globalAlpha = 0.3;
+  ctx.beginPath();
+  ctx.moveTo(padL, padT); ctx.lineTo(padL, padT+plotH); ctx.lineTo(padL+plotW, padT+plotH);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = textColor;
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.fillText(Math.round(maxV), 2, padT+6);
+  ctx.fillText(Math.round(minV), 2, padT+plotH);
+
+  // línea
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  points.forEach((p,i)=>{
+    const x = xFor(new Date(p.measured_at).getTime());
+    const y = yFor(p.value_mgdl);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = lineColor;
+  points.forEach(p=>{
+    const x = xFor(new Date(p.measured_at).getTime());
+    const y = yFor(p.value_mgdl);
+    ctx.beginPath();
+    ctx.arc(x,y,2.5,0,Math.PI*2);
+    ctx.fill();
+  });
+}
+window.addEventListener('resize', ()=>{ if(document.getElementById('view-glucemia').classList.contains('active')) drawGlucoseChart(); });
+
+// ---------- Comidas / Insulina ----------
+let feedingKind = 'comida';
+document.querySelectorAll('#feedingKindSeg button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#feedingKindSeg button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    feedingKind = btn.dataset.kind;
+    document.getElementById('insulinUnitsField').style.display = feedingKind==='insulina' ? 'block' : 'none';
+  });
+});
+document.getElementById('feedingTime').value = nowLocalInputValue();
+document.getElementById('feedingForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  if(!currentCaregiver()){ showToast('Elige quién eres arriba'); return; }
+  const description = document.getElementById('feedingDescription').value.trim();
+  const time = document.getElementById('feedingTime').value;
+  const units = document.getElementById('insulinUnits').value;
+  const {error} = await sb.from('feedings').insert({
+    kind: feedingKind,
+    description: description || null,
+    insulin_units: feedingKind==='insulina' && units ? parseFloat(units) : null,
+    given_at: new Date(time).toISOString(),
+    caregiver_name: currentCaregiver()
+  });
+  if(error){ showToast('Error: ' + error.message); return; }
+  e.target.reset();
+  document.getElementById('feedingTime').value = nowLocalInputValue();
+  showToast('Registro guardado');
+});
+
+async function quickAddFeeding(kind){
+  if(!currentCaregiver()){ showToast('Elige quién eres arriba'); return; }
+  goTo('comidas');
+  document.querySelectorAll('#feedingKindSeg button').forEach(b=>b.classList.toggle('active', b.dataset.kind===kind));
+  feedingKind = kind;
+  document.getElementById('insulinUnitsField').style.display = kind==='insulina' ? 'block' : 'none';
+}
+
+let feedingFilter = 'todos';
+document.querySelectorAll('#feedingFilter button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#feedingFilter button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    feedingFilter = btn.dataset.filter;
+    renderFeedingList();
+  });
+});
+
+function renderFeedingList(){
+  const box = document.getElementById('feedingList');
+  let rows = state.feedings;
+  if(feedingFilter !== 'todos') rows = rows.filter(f=>f.kind===feedingFilter);
+  if(!rows.length){ box.innerHTML = '<div class="empty">Sin registros todavía.</div>'; return; }
+  box.innerHTML = rows.slice(0,100).map(f=>`
+    <div class="list-item">
+      <div class="top-row">
+        <strong>${f.kind==='insulina' ? '💉 Insulina' + (f.insulin_units ? ' · '+f.insulin_units+' UI' : '') : '🍽️ Comida'}</strong>
+        <button class="icon-btn" onclick="deleteRow('feedings','${f.id}')">✕</button>
+      </div>
+      <div class="meta">${formatDateTime(f.given_at)} · ${escapeHtml(f.caregiver_name)}${f.description ? ' · ' + escapeHtml(f.description) : ''}</div>
+    </div>`).join('');
+}
+
+// ---------- Notas ----------
+document.getElementById('noteForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  if(!currentCaregiver()){ showToast('Elige quién eres arriba'); return; }
+  const text = document.getElementById('noteText').value.trim();
+  const category = document.getElementById('noteCategory').value;
+  if(!text) return;
+  const {error} = await sb.from('notes').insert({ category, text, caregiver_name: currentCaregiver() });
+  if(error){ showToast('Error: ' + error.message); return; }
+  e.target.reset();
+  showToast('Nota guardada');
+});
+
+let noteFilter = 'todas';
+document.querySelectorAll('#noteFilter button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#noteFilter button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    noteFilter = btn.dataset.filter;
+    renderNoteList();
+  });
+});
+
+const categoryLabels = {general:'General', sintoma:'Síntoma', veterinario:'Veterinario'};
+function renderNoteList(){
+  const box = document.getElementById('noteList');
+  let rows = state.notes;
+  if(noteFilter !== 'todas') rows = rows.filter(n=>n.category===noteFilter);
+  if(!rows.length){ box.innerHTML = '<div class="empty">Sin notas todavía.</div>'; return; }
+  box.innerHTML = rows.slice(0,100).map(n=>`
+    <div class="list-item">
+      <div class="top-row">
+        <span class="pill ${n.category==='sintoma'?'danger':n.category==='veterinario'?'warn':'ok'}">${categoryLabels[n.category]}</span>
+        <button class="icon-btn" onclick="deleteRow('notes','${n.id}')">✕</button>
+      </div>
+      <div style="margin-top:6px">${escapeHtml(n.text)}</div>
+      <div class="meta">${formatDateTime(n.created_at)} · ${escapeHtml(n.caregiver_name)}</div>
+    </div>`).join('');
+}
+
+// ---------- Recordatorios ----------
+document.getElementById('reminderForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const label = document.getElementById('reminderLabel').value.trim();
+  const time = document.getElementById('reminderTime').value;
+  const kind = document.getElementById('reminderKind').value;
+  if(!label || !time) return;
+  const {error} = await sb.from('reminders').insert({ label, time_of_day: time, kind });
+  if(error){ showToast('Error: ' + error.message); return; }
+  e.target.reset();
+  showToast('Recordatorio añadido');
+});
+
+function renderReminderList(){
+  const box = document.getElementById('reminderList');
+  if(!state.reminders.length){ box.innerHTML = '<div class="empty">Sin recordatorios configurados.</div>'; return; }
+  box.innerHTML = state.reminders.map(r=>`
+    <div class="list-item top-row">
+      <span>${kindIcon(r.kind)} ${escapeHtml(r.label)} · <strong>${r.time_of_day.slice(0,5)}</strong></span>
+      <span>
+        <button class="icon-btn" onclick="toggleReminder('${r.id}', ${!r.active})">${r.active ? '⏸' : '▶️'}</button>
+        <button class="icon-btn" onclick="deleteRow('reminders','${r.id}')">✕</button>
+      </span>
+    </div>`).join('');
+}
+function kindIcon(k){ return k==='insulina' ? '💉' : k==='comida' ? '🍽️' : '🩸'; }
+async function toggleReminder(id, active){
+  await sb.from('reminders').update({active}).eq('id', id);
+}
+
+// ---------- Borrado genérico ----------
+async function deleteRow(table, id){
+  if(!confirm('¿Eliminar este registro?')) return;
+  const {error} = await sb.from(table).delete().eq('id', id);
+  if(error) showToast('Error: ' + error.message);
+}
+
+// ---------- Dashboard ----------
+function renderDashboard(){
+  // última glucemia
+  const gBox = document.getElementById('lastGlucoseBox');
+  if(state.glucose.length){
+    const g = state.glucose[0];
+    const rangeMin = parseFloat(document.getElementById('rangeMin').value) || 100;
+    const rangeMax = parseFloat(document.getElementById('rangeMax').value) || 250;
+    let pillClass = 'ok', pillText = 'En rango';
+    if(g.value_mgdl < rangeMin){ pillClass='danger'; pillText='Baja'; }
+    else if(g.value_mgdl > rangeMax){ pillClass='warn'; pillText='Alta'; }
+    gBox.innerHTML = `
+      <div class="row">
+        <div class="big-value">${g.value_mgdl}<span style="font-size:16px; font-weight:600"> mg/dL</span></div>
+        <span class="pill ${pillClass}">${pillText}</span>
+      </div>
+      <div class="muted">${relativeTime(g.measured_at)} · ${escapeHtml(g.caregiver_name)}</div>`;
+  } else {
+    gBox.innerHTML = '<div class="empty">Sin lecturas todavía.</div>';
+  }
+
+  // última comida/insulina
+  const fBox = document.getElementById('lastFeedingBox');
+  if(state.feedings.length){
+    const f = state.feedings[0];
+    fBox.innerHTML = `
+      <div class="row">
+        <strong>${f.kind==='insulina' ? '💉 Insulina' + (f.insulin_units? ' · '+f.insulin_units+' UI':'') : '🍽️ Comida'}</strong>
+        <span class="muted">${relativeTime(f.given_at)}</span>
+      </div>
+      <div class="muted">${escapeHtml(f.caregiver_name)}${f.description ? ' · '+escapeHtml(f.description):''}</div>`;
+  } else {
+    fBox.innerHTML = '<div class="empty">Sin registros todavía.</div>';
+  }
+
+  // recordatorios de hoy
+  const rBox = document.getElementById('remindersBox');
+  const active = state.reminders.filter(r=>r.active);
+  if(!active.length){
+    rBox.innerHTML = '<div class="empty">No hay recordatorios configurados (ve a Ajustes).</div>';
+  } else {
+    const now = new Date();
+    const nowMin = now.getHours()*60 + now.getMinutes();
+    const withDelta = active.map(r=>{
+      const [h,m] = r.time_of_day.split(':').map(Number);
+      const rMin = h*60+m;
+      return {...r, delta: rMin - nowMin, hm: `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`};
+    }).sort((a,b)=>a.delta-b.delta);
+    rBox.innerHTML = withDelta.map(r=>{
+      let status;
+      if(r.delta < -30) status = '<span class="pill danger">Atrasado</span>';
+      else if(r.delta <= 0) status = '<span class="pill warn">Ahora</span>';
+      else if(r.delta <= 60) status = '<span class="pill ok">Pronto</span>';
+      else status = '';
+      return `<div class="reminder-item">
+        <span>${kindIcon(r.kind)} ${escapeHtml(r.label)}</span>
+        <span class="reminder-time">${r.hm} ${status}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // notas recientes
+  const nBox = document.getElementById('recentNotesBox');
+  if(!state.notes.length){
+    nBox.innerHTML = '<div class="empty">Sin notas todavía.</div>';
+  } else {
+    nBox.innerHTML = state.notes.slice(0,3).map(n=>`
+      <div class="list-item">
+        <div class="top-row">
+          <span class="pill ${n.category==='sintoma'?'danger':n.category==='veterinario'?'warn':'ok'}">${categoryLabels[n.category]}</span>
+          <span class="muted">${relativeTime(n.created_at)}</span>
+        </div>
+        <div style="margin-top:4px">${escapeHtml(n.text)}</div>
+      </div>`).join('');
+  }
+}
+
+function escapeHtml(str){
+  if(str===null || str===undefined) return '';
+  return String(str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+boot();
+setInterval(()=>{ if(sb) renderDashboard(); }, 30000);
+</script>
+</body>
+</html>
