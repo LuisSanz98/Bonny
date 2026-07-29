@@ -325,6 +325,15 @@
     </div>
 
     <div class="card">
+      <h2>Notificaciones</h2>
+      <p class="muted" id="pushStatus">Comprobando...</p>
+      <button id="pushEnableBtn" class="small">Activar notificaciones en este móvil</button>
+      <p class="muted" style="margin-top:8px">
+        Avisa a los 15 min y a las 2h de cada comida (solo a quien la registró), y todos los días a las 23:00 de la insulina lenta (a todos). En iPhone, la app debe estar añadida a la pantalla de inicio para que funcione.
+      </p>
+    </div>
+
+    <div class="card">
       <h2>Acerca de</h2>
       <p class="muted">Los datos se guardan en una base de datos compartida (Supabase) y se sincronizan al instante entre todos los cuidadores que tengan el enlace. No hay contraseñas individuales: trata el enlace de esta app como algo privado de la familia.</p>
     </div>
@@ -350,6 +359,7 @@
 // Si los dejas vacíos, la app pedirá configurarlos una vez por dispositivo.
 const BUILT_IN_SUPABASE_URL = "https://mehnlxmztmfkkxfmznpa.supabase.co";
 const BUILT_IN_SUPABASE_ANON_KEY = "sb_publishable_gLpuotyWzcDcsHsPx6bztA_UeeElc4E";
+const VAPID_PUBLIC_KEY = "BIgawRIrQX_iE2oo3SXn2Df0PRvbFqefEu5TnrABxxjob0PQVnqXGEO1UQ5A3AlGZaMIxl36tjUGwSVMTF4Wt5Y";
 
 let SUPABASE_URL = BUILT_IN_SUPABASE_URL || localStorage.getItem('sb_url') || "";
 let SUPABASE_ANON_KEY = BUILT_IN_SUPABASE_ANON_KEY || localStorage.getItem('sb_key') || "";
@@ -883,6 +893,71 @@ function escapeHtml(str){
 
 boot();
 setInterval(()=>{ if(sb) renderDashboard(); }, 30000);
+
+// ---------- Notificaciones push ----------
+function urlBase64ToUint8Array(base64String){
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g,'+').replace(/_/g,'/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for(let i=0;i<rawData.length;++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+function pushSupported(){
+  return 'serviceWorker' in navigator && 'PushManager' in window;
+}
+
+async function updatePushStatus(){
+  const statusEl = document.getElementById('pushStatus');
+  const btn = document.getElementById('pushEnableBtn');
+  if(!pushSupported()){
+    statusEl.textContent = 'Este navegador no admite notificaciones (en iPhone, añade primero la app a la pantalla de inicio y ábrela desde ahí).';
+    btn.style.display = 'none';
+    return;
+  }
+  if(Notification.permission === 'granted'){
+    statusEl.textContent = 'Notificaciones activadas en este móvil ✅';
+    btn.textContent = 'Reactivar / actualizar suscripción';
+  } else if(Notification.permission === 'denied'){
+    statusEl.textContent = 'Bloqueadas para esta web. Actívalas desde los ajustes del navegador.';
+  } else {
+    statusEl.textContent = 'Todavía no activadas en este móvil.';
+  }
+}
+
+async function enablePush(){
+  if(!pushSupported()){ showToast('No soportado en este navegador'); return; }
+  if(!currentCaregiver()){ showToast('Elige primero quién eres arriba'); return; }
+  try{
+    const permission = await Notification.requestPermission();
+    if(permission !== 'granted'){ showToast('Permiso no concedido'); updatePushStatus(); return; }
+    const reg = await navigator.serviceWorker.register('sw.js');
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub){
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
+    const json = sub.toJSON();
+    const {error} = await sb.from('push_subscriptions').upsert({
+      caregiver_name: currentCaregiver(),
+      endpoint: json.endpoint,
+      p256dh: json.keys.p256dh,
+      auth: json.keys.auth
+    }, {onConflict: 'endpoint'});
+    if(error){ showToast('Error: ' + error.message); return; }
+    showToast('Notificaciones activadas');
+    updatePushStatus();
+  }catch(err){
+    console.error(err);
+    showToast('Error activando notificaciones');
+  }
+}
+document.getElementById('pushEnableBtn').addEventListener('click', enablePush);
+updatePushStatus();
 </script>
 </body>
 </html>
