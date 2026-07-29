@@ -3,12 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Glucemia Perro</title>
+<title>Bonny</title>
 <meta name="theme-color" content="#1b6d6d">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Glucemia Perro">
+<meta name="apple-mobile-web-app-title" content="Bonny">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="img/favicon-96.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <style>
   :root{
     --bg:#f4f6f6; --card:#ffffff; --text:#16211f; --muted:#5b6866; --border:#e1e6e5;
@@ -33,7 +36,8 @@
     padding:calc(10px + env(safe-area-inset-top)) 16px 10px;
     display:flex; align-items:center; justify-content:space-between; gap:10px;
   }
-  header.top h1{font-size:17px; margin:0; font-weight:700;}
+  header.top h1{font-size:17px; margin:0; font-weight:700; display:flex; align-items:center; gap:8px;}
+  header.top h1 img{width:30px; height:30px; border-radius:50%; object-fit:cover; border:1.5px solid rgba(255,255,255,.6);}
   header.top select{
     background:rgba(255,255,255,.18); color:#fff; border:1px solid rgba(255,255,255,.4);
     border-radius:8px; padding:6px 8px; font-size:14px; max-width:40vw;
@@ -42,6 +46,14 @@
   main{padding:14px; max-width:640px; margin:0 auto;}
   .view{display:none;}
   .view.active{display:block;}
+  #view-inicio.active{
+    background-image:url('img/home-bg.jpg');
+    background-size:cover;
+    background-position:center 22%;
+    border-radius:18px;
+    margin:-14px -14px 14px;
+    padding:14px;
+  }
   .card{
     background:var(--card); border:1px solid var(--border); border-radius:14px;
     padding:14px; margin-bottom:12px;
@@ -129,7 +141,7 @@
 
 <div id="app" style="display:none">
 <header class="top">
-  <h1>🐾 Glucemia</h1>
+  <h1><img src="img/header-photo.jpg" alt="Perro"> Bonny</h1>
   <select id="caregiverSelect"></select>
 </header>
 
