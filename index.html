@@ -779,7 +779,8 @@ document.getElementById('reminderForm').addEventListener('submit', async e=>{
   const time = document.getElementById('reminderTime').value;
   const kind = document.getElementById('reminderKind').value;
   if(!label || !time) return;
-  const {error} = await sb.from('reminders').insert({ label, time_of_day: time, kind });
+  if(!currentCaregiver()){ showToast('Elige primero quién eres arriba'); return; }
+  const {error} = await sb.from('reminders').insert({ label, time_of_day: time, kind, caregiver_name: currentCaregiver() });
   if(error){ showToast('Error: ' + error.message); return; }
   e.target.reset();
   showToast('Recordatorio añadido');
@@ -790,7 +791,7 @@ function renderReminderList(){
   if(!state.reminders.length){ box.innerHTML = '<div class="empty">Sin recordatorios configurados.</div>'; return; }
   box.innerHTML = state.reminders.map(r=>`
     <div class="list-item top-row">
-      <span>${kindIcon(r.kind)} ${escapeHtml(r.label)} · <strong>${r.time_of_day.slice(0,5)}</strong></span>
+      <span>${kindIcon(r.kind)} ${escapeHtml(r.label)} · <strong>${r.time_of_day.slice(0,5)}</strong>${r.caregiver_name ? ' · <span class="muted">'+escapeHtml(r.caregiver_name)+'</span>' : ''}</span>
       <span>
         <button class="icon-btn" onclick="toggleReminder('${r.id}', ${!r.active})">${r.active ? '⏸' : '▶️'}</button>
         <button class="icon-btn" onclick="deleteRow('reminders','${r.id}')">✕</button>
