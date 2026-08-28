@@ -155,6 +155,11 @@
     </div>
 
     <div class="card">
+      <h2>Hoy, en orden</h2>
+      <div id="todayTimelineBox"></div>
+    </div>
+
+    <div class="card">
       <h2>Última glucemia</h2>
       <div id="lastGlucoseBox"></div>
     </div>
@@ -811,7 +816,42 @@ async function deleteRow(table, id){
 }
 
 // ---------- Dashboard ----------
+function isToday(iso){
+  const d = new Date(iso);
+  const now = new Date();
+  return d.toDateString() === now.toDateString();
+}
+
+function renderTodayTimeline(){
+  const box = document.getElementById('todayTimelineBox');
+  if(!box) return;
+  const items = [];
+  state.glucose.forEach(g=>{
+    if(isToday(g.measured_at)){
+      items.push({ t: new Date(g.measured_at), icon: '🩸', label: `Glucemia: ${g.value_mgdl} mg/dL`, sub: g.notes || '', caregiver: g.caregiver_name });
+    }
+  });
+  state.feedings.forEach(f=>{
+    if(isToday(f.given_at)){
+      const label = f.kind === 'insulina' ? `Insulina${f.insulin_units ? ' · ' + f.insulin_units + ' UI' : ''}` : 'Comida';
+      items.push({ t: new Date(f.given_at), icon: f.kind === 'insulina' ? '💉' : '🍽️', label, sub: f.description || '', caregiver: f.caregiver_name });
+    }
+  });
+  items.sort((a,b)=> a.t - b.t);
+  if(!items.length){ box.innerHTML = '<div class="empty">Nada registrado todavía hoy.</div>'; return; }
+  box.innerHTML = items.map(it=>`
+    <div class="list-item">
+      <div class="top-row">
+        <span>${it.icon} <strong>${escapeHtml(it.label)}</strong></span>
+        <span class="muted">${it.t.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</span>
+      </div>
+      ${it.sub ? `<div class="meta">${escapeHtml(it.sub)}</div>` : ''}
+      <div class="meta">${escapeHtml(it.caregiver)}</div>
+    </div>`).join('');
+}
+
 function renderDashboard(){
+  renderTodayTimeline();
   // última glucemia
   const gBox = document.getElementById('lastGlucoseBox');
   if(state.glucose.length){
