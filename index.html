@@ -154,6 +154,12 @@
       <button onclick="quickAddFeeding('comida')">+ Comida</button>
     </div>
 
+    <div class="card" id="currentPlanCard" style="display:none">
+      <h2>Pauta de esta toma</h2>
+      <div class="muted" id="currentPlanSource"></div>
+      <div id="currentPlanBox"></div>
+    </div>
+
     <div class="card">
       <h2>Hoy, en orden</h2>
       <div id="todayTimelineBox"></div>
@@ -196,6 +202,14 @@
           <label>Notas (opcional)</label>
           <input type="text" id="glucoseNotes" placeholder="p.ej. antes de comer">
         </div>
+        <div class="field">
+          <label style="display:flex; align-items:center; gap:8px; color:var(--text); font-size:15px;">
+            <input type="checkbox" id="glucoseIsMeal" checked style="width:auto;">
+            Es la glucemia de la comida / cena
+          </label>
+          <div class="muted">Calcula el 1er bolo y activa los avisos de comida e insulina. Desmárcala si es una medición suelta.</div>
+        </div>
+        <div id="glucosePlanPreview"></div>
         <button type="submit">Guardar lectura</button>
       </form>
     </div>
@@ -237,9 +251,20 @@
             <button type="button" data-kind="insulina">Insulina</button>
           </div>
         </div>
-        <div class="field" id="insulinUnitsField" style="display:none">
-          <label>Unidades de insulina</label>
-          <input type="number" step="0.5" id="insulinUnits">
+        <div id="insulinUnitsField" style="display:none">
+          <div class="field">
+            <label>Tipo de insulina</label>
+            <div class="seg" id="insulinTypeSeg">
+              <button type="button" data-itype="bolo1" class="active">1er bolo</button>
+              <button type="button" data-itype="bolo2">2º bolo</button>
+              <button type="button" data-itype="lenta">Lenta</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Unidades de insulina</label>
+            <input type="number" step="0.5" id="insulinUnits">
+            <div class="muted" id="insulinSuggestion"></div>
+          </div>
         </div>
         <div class="field">
           <label>Descripción</label>
@@ -334,7 +359,7 @@
       <p class="muted" id="pushStatus">Comprobando...</p>
       <button id="pushEnableBtn" class="small">Activar notificaciones en este móvil</button>
       <p class="muted" style="margin-top:8px">
-        Avisa a los 15 min y a las 2h15 de cada comida (solo a quien la registró), y todos los días a las 23:00 de la insulina lenta (solo a quien haya dado la última comida de ese día). En iPhone, la app debe estar añadida a la pantalla de inicio para que funcione.
+        Tras registrar la glucemia de la comida o la cena, avisa a quien la registró de la hora de comer, del 1er bolo (con su dosis) y del 2º bolo 2 h después. A las 23:00 avisa de la insulina lenta a quien haya dado la última comida del día. Los avisos de glucemia de las 12:00 y 20:00 se ponen como recordatorio personal en "Recordatorios habituales". En iPhone, la app debe estar añadida a la pantalla de inicio para que funcione.
       </p>
     </div>
 
@@ -547,6 +572,82 @@ async function deleteCaregiver(id){
   await sb.from('caregivers').delete().eq('id', id);
 }
 
+// ---------- Pauta de insulina ----------
+// Debe coincidir con supabase/functions/send-reminders/index.ts
+const PAUTA = {
+  baseBolo1: 5,       // dosis base del 1er bolo
+  ref: 100,           // glucemia de referencia para la dosis
+  pasoArriba: 100,    // +1 UI por cada 100 por encima de ref
+  pasoAbajo: 30,      // -1 UI por cada 30 por debajo de ref
+  noPincharBajoDe: 50,
+  normalMin: 90,      // 90-110: insulina a la vez que la comida
+  normalMax: 110,
+  comidaTrasGlucemia: 15, // minutos
+  margenInsulina: 5,      // minutos antes (alta) o después (baja) de comer
+  bolo2TrasBolo1: 120,    // minutos
+  bolo2Comida: 7,
+  bolo2Cena: 3,
+  lenta: 11
+};
+
+function roundHalfUp(x){ return Math.floor(x + 0.5); }
+
+function bolo1Dose(g){
+  if(g < PAUTA.noPincharBajoDe) return 0;
+  if(g >= PAUTA.ref) return PAUTA.baseBolo1 + roundHalfUp((g - PAUTA.ref) / PAUTA.pasoArriba);
+  return Math.max(0, PAUTA.baseBolo1 - roundHalfUp((PAUTA.ref - g) / PAUTA.pasoAbajo));
+}
+
+function isCena(date){ return date.getHours() >= 16; }
+
+function hm(date){ return date.toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'}); }
+
+// Devuelve la pauta completa de una toma a partir de su glucemia
+function mealPlan(g, measuredAt){
+  const t = new Date(measuredAt);
+  const comida = new Date(t.getTime() + PAUTA.comidaTrasGlucemia*60000);
+  const dose = bolo1Dose(g);
+  let insulinAt = null, cuando = '';
+  if(dose > 0){
+    if(g > PAUTA.normalMax){ insulinAt = new Date(comida.getTime() - PAUTA.margenInsulina*60000); cuando = '5 min antes de comer, glucemia alta'; }
+    else if(g < PAUTA.normalMin){ insulinAt = new Date(comida.getTime() + PAUTA.margenInsulina*60000); cuando = '5 min después de comer, glucemia baja'; }
+    else { insulinAt = comida; cuando = 'a la vez que la comida'; }
+  }
+  const cena = isCena(t);
+  return {
+    g, dose, cuando, comida, insulinAt, cena,
+    bolo2At: insulinAt ? new Date(insulinAt.getTime() + PAUTA.bolo2TrasBolo1*60000) : null,
+    bolo2Dose: cena ? PAUTA.bolo2Cena : PAUTA.bolo2Comida
+  };
+}
+
+function mealPlanHtml(p){
+  if(p.dose === 0){
+    return `<div class="card" style="border-color:var(--danger); margin:10px 0;">
+      <strong style="color:var(--danger)">⚠️ Glucemia ${p.g} (menos de ${PAUTA.noPincharBajoDe}): NO pinchar el 1er bolo</strong>
+      <div class="muted">${p.cena ? 'Cena' : 'Comida'} a las ${hm(p.comida)}.</div>
+    </div>`;
+  }
+  return `<div class="card" style="margin:10px 0;">
+    <div>🍽️ ${p.cena ? 'Cena' : 'Comida'}: <strong>${hm(p.comida)}</strong></div>
+    <div>💉 1er bolo: <strong>${p.dose} UI</strong> a las <strong>${hm(p.insulinAt)}</strong> <span class="muted">(${p.cuando})</span></div>
+    <div>💉 2º bolo: <strong>${p.bolo2Dose} UI</strong> a las <strong>${hm(p.bolo2At)}</strong> <span class="muted">(2 h después del 1er bolo)</span></div>
+  </div>`;
+}
+
+function updateGlucosePlanPreview(){
+  const box = document.getElementById('glucosePlanPreview');
+  const g = parseFloat(document.getElementById('glucoseValue').value);
+  const time = document.getElementById('glucoseTime').value;
+  const isMeal = document.getElementById('glucoseIsMeal').checked;
+  if(!isMeal || isNaN(g) || !time){ box.innerHTML = ''; return; }
+  box.innerHTML = mealPlanHtml(mealPlan(g, new Date(time)));
+}
+['glucoseValue','glucoseTime','glucoseIsMeal'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', updateGlucosePlanPreview);
+  document.getElementById(id).addEventListener('change', updateGlucosePlanPreview);
+});
+
 // ---------- Glucemia ----------
 document.getElementById('glucoseTime').value = nowLocalInputValue();
 document.getElementById('glucoseForm').addEventListener('submit', async e=>{
@@ -554,17 +655,22 @@ document.getElementById('glucoseForm').addEventListener('submit', async e=>{
   const value = parseFloat(document.getElementById('glucoseValue').value);
   const time = document.getElementById('glucoseTime').value;
   const notes = document.getElementById('glucoseNotes').value.trim();
+  const isMeal = document.getElementById('glucoseIsMeal').checked;
   if(!currentCaregiver()){ showToast('Elige quién eres arriba'); return; }
   const {error} = await sb.from('glucose_readings').insert({
     value_mgdl: value,
     measured_at: new Date(time).toISOString(),
     caregiver_name: currentCaregiver(),
-    notes: notes || null
+    notes: notes || null,
+    is_meal: isMeal
   });
   if(error){ showToast('Error: ' + error.message); return; }
   e.target.reset();
+  document.getElementById('glucoseIsMeal').checked = true;
   document.getElementById('glucoseTime').value = nowLocalInputValue();
+  updateGlucosePlanPreview();
   showToast('Lectura guardada');
+  goTo('inicio');
 });
 
 function renderGlucoseList(){
@@ -682,8 +788,52 @@ document.querySelectorAll('#feedingKindSeg button').forEach(btn=>{
     btn.classList.add('active');
     feedingKind = btn.dataset.kind;
     document.getElementById('insulinUnitsField').style.display = feedingKind==='insulina' ? 'block' : 'none';
+    if(feedingKind==='insulina') suggestInsulin();
   });
 });
+
+let insulinType = 'bolo1';
+const insulinTypeLabels = {bolo1:'1er bolo', bolo2:'2º bolo', lenta:'Lenta'};
+function setInsulinType(t){
+  insulinType = t;
+  document.querySelectorAll('#insulinTypeSeg button').forEach(b=>b.classList.toggle('active', b.dataset.itype===t));
+  suggestInsulin();
+}
+document.querySelectorAll('#insulinTypeSeg button').forEach(btn=>{
+  btn.addEventListener('click', ()=>setInsulinType(btn.dataset.itype));
+});
+
+// Última glucemia de toma de las 3 últimas horas
+function latestMealGlucose(){
+  const limit = Date.now() - 3*3600*1000;
+  return state.glucose.find(g=>g.is_meal && new Date(g.measured_at).getTime() >= limit) || null;
+}
+
+function suggestInsulin(){
+  const unitsEl = document.getElementById('insulinUnits');
+  const hint = document.getElementById('insulinSuggestion');
+  const time = new Date(document.getElementById('feedingTime').value || Date.now());
+  if(insulinType === 'lenta'){
+    unitsEl.value = PAUTA.lenta;
+    hint.textContent = `Lenta: ${PAUTA.lenta} UI.`;
+  } else if(insulinType === 'bolo2'){
+    const d = isCena(time) ? PAUTA.bolo2Cena : PAUTA.bolo2Comida;
+    unitsEl.value = d;
+    hint.textContent = `2º bolo de la ${isCena(time) ? 'cena' : 'comida'}: ${d} UI.`;
+  } else {
+    const g = latestMealGlucose();
+    if(!g){ unitsEl.value = ''; hint.textContent = 'No hay glucemia de toma reciente: mídela primero para calcular la dosis.'; return; }
+    const d = bolo1Dose(g.value_mgdl);
+    if(d === 0){
+      unitsEl.value = '';
+      hint.innerHTML = `<span style="color:var(--danger)">⚠️ Glucemia ${g.value_mgdl} (menos de ${PAUTA.noPincharBajoDe}): NO pinchar.</span>`;
+    } else {
+      unitsEl.value = d;
+      hint.textContent = `Según la glucemia de ${g.value_mgdl} de las ${hm(new Date(g.measured_at))}: ${d} UI.`;
+    }
+  }
+}
+document.getElementById('feedingTime').addEventListener('change', ()=>{ if(feedingKind==='insulina') suggestInsulin(); });
 document.getElementById('feedingTime').value = nowLocalInputValue();
 document.getElementById('feedingForm').addEventListener('submit', async e=>{
   e.preventDefault();
@@ -695,12 +845,14 @@ document.getElementById('feedingForm').addEventListener('submit', async e=>{
     kind: feedingKind,
     description: description || null,
     insulin_units: feedingKind==='insulina' && units ? parseFloat(units) : null,
+    insulin_type: feedingKind==='insulina' ? insulinType : null,
     given_at: new Date(time).toISOString(),
     caregiver_name: currentCaregiver()
   });
   if(error){ showToast('Error: ' + error.message); return; }
   e.target.reset();
   document.getElementById('feedingTime').value = nowLocalInputValue();
+  if(feedingKind==='insulina') suggestInsulin();
   showToast('Registro guardado');
 });
 
@@ -710,6 +862,13 @@ async function quickAddFeeding(kind){
   document.querySelectorAll('#feedingKindSeg button').forEach(b=>b.classList.toggle('active', b.dataset.kind===kind));
   feedingKind = kind;
   document.getElementById('insulinUnitsField').style.display = kind==='insulina' ? 'block' : 'none';
+  if(kind==='insulina') suggestInsulin();
+}
+
+function feedingLabel(f){
+  if(f.kind !== 'insulina') return '🍽️ Comida';
+  const tipo = f.insulin_type ? insulinTypeLabels[f.insulin_type] : 'Insulina';
+  return `💉 ${tipo}${f.insulin_units ? ' · ' + f.insulin_units + ' UI' : ''}`;
 }
 
 let feedingFilter = 'todos';
@@ -730,7 +889,7 @@ function renderFeedingList(){
   box.innerHTML = rows.slice(0,100).map(f=>`
     <div class="list-item">
       <div class="top-row">
-        <strong>${f.kind==='insulina' ? '💉 Insulina' + (f.insulin_units ? ' · '+f.insulin_units+' UI' : '') : '🍽️ Comida'}</strong>
+        <strong>${escapeHtml(feedingLabel(f))}</strong>
         <button class="icon-btn" onclick="deleteRow('feedings','${f.id}')">✕</button>
       </div>
       <div class="meta">${formatDateTime(f.given_at)} · ${escapeHtml(f.caregiver_name)}${f.description ? ' · ' + escapeHtml(f.description) : ''}</div>
@@ -833,7 +992,8 @@ function renderTodayTimeline(){
   });
   state.feedings.forEach(f=>{
     if(isToday(f.given_at)){
-      const label = f.kind === 'insulina' ? `Insulina${f.insulin_units ? ' · ' + f.insulin_units + ' UI' : ''}` : 'Comida';
+      const tipo = f.insulin_type ? insulinTypeLabels[f.insulin_type] : 'Insulina';
+      const label = f.kind === 'insulina' ? `${tipo}${f.insulin_units ? ' · ' + f.insulin_units + ' UI' : ''}` : 'Comida';
       items.push({ t: new Date(f.given_at), icon: f.kind === 'insulina' ? '💉' : '🍽️', label, sub: f.description || '', caregiver: f.caregiver_name });
     }
   });
@@ -850,7 +1010,18 @@ function renderTodayTimeline(){
     </div>`).join('');
 }
 
+function renderCurrentPlan(){
+  const card = document.getElementById('currentPlanCard');
+  const g = latestMealGlucose();
+  if(!g){ card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  document.getElementById('currentPlanSource').textContent =
+    `Glucemia ${g.value_mgdl} a las ${hm(new Date(g.measured_at))} (${g.caregiver_name})`;
+  document.getElementById('currentPlanBox').innerHTML = mealPlanHtml(mealPlan(g.value_mgdl, g.measured_at));
+}
+
 function renderDashboard(){
+  renderCurrentPlan();
   renderTodayTimeline();
   // última glucemia
   const gBox = document.getElementById('lastGlucoseBox');
@@ -877,7 +1048,7 @@ function renderDashboard(){
     const f = state.feedings[0];
     fBox.innerHTML = `
       <div class="row">
-        <strong>${f.kind==='insulina' ? '💉 Insulina' + (f.insulin_units? ' · '+f.insulin_units+' UI':'') : '🍽️ Comida'}</strong>
+        <strong>${escapeHtml(feedingLabel(f))}</strong>
         <span class="muted">${relativeTime(f.given_at)}</span>
       </div>
       <div class="muted">${escapeHtml(f.caregiver_name)}${f.description ? ' · '+escapeHtml(f.description):''}</div>`;
