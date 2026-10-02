@@ -546,7 +546,15 @@ function renderCaregiverSelect(){
 }
 document.getElementById('caregiverSelect').addEventListener('change', e=>{
   localStorage.setItem('caregiver_name', e.target.value);
+  renderReminderList();
+  renderDashboard();
 });
+
+// Cada cuidador ve solo sus recordatorios (y los antiguos sin dueño, para poder borrarlos)
+function myReminders(){
+  const me = currentCaregiver();
+  return state.reminders.filter(r=>!r.caregiver_name || r.caregiver_name === me);
+}
 
 function renderCaregiverList(){
   const box = document.getElementById('caregiverList');
@@ -952,10 +960,12 @@ document.getElementById('reminderForm').addEventListener('submit', async e=>{
 
 function renderReminderList(){
   const box = document.getElementById('reminderList');
-  if(!state.reminders.length){ box.innerHTML = '<div class="empty">Sin recordatorios configurados.</div>'; return; }
-  box.innerHTML = state.reminders.map(r=>`
+  if(!currentCaregiver()){ box.innerHTML = '<div class="empty">Elige quién eres arriba para ver tus recordatorios.</div>'; return; }
+  const mine = myReminders();
+  if(!mine.length){ box.innerHTML = '<div class="empty">No tienes recordatorios configurados.</div>'; return; }
+  box.innerHTML = mine.map(r=>`
     <div class="list-item top-row">
-      <span>${kindIcon(r.kind)} ${escapeHtml(r.label)} · <strong>${r.time_of_day.slice(0,5)}</strong>${r.caregiver_name ? ' · <span class="muted">'+escapeHtml(r.caregiver_name)+'</span>' : ''}</span>
+      <span>${kindIcon(r.kind)} ${escapeHtml(r.label)} · <strong>${r.time_of_day.slice(0,5)}</strong>${r.caregiver_name ? '' : ' · <span class="muted">sin dueño, no avisa</span>'}</span>
       <span>
         <button class="icon-btn" onclick="toggleReminder('${r.id}', ${!r.active})">${r.active ? '⏸' : '▶️'}</button>
         <button class="icon-btn" onclick="deleteRow('reminders','${r.id}')">✕</button>
@@ -1058,9 +1068,9 @@ function renderDashboard(){
 
   // recordatorios de hoy
   const rBox = document.getElementById('remindersBox');
-  const active = state.reminders.filter(r=>r.active);
+  const active = state.reminders.filter(r=>r.active && r.caregiver_name && r.caregiver_name === currentCaregiver());
   if(!active.length){
-    rBox.innerHTML = '<div class="empty">No hay recordatorios configurados (ve a Ajustes).</div>';
+    rBox.innerHTML = '<div class="empty">No tienes recordatorios configurados (ve a Ajustes).</div>';
   } else {
     const now = new Date();
     const nowMin = now.getHours()*60 + now.getMinutes();
