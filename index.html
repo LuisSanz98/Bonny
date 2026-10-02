@@ -610,10 +610,10 @@ async function deleteCaregiver(id){
 // Debe coincidir con supabase/functions/send-reminders/index.ts
 const PAUTA = {
   baseBolo1: 5,       // dosis base del 1er bolo
-  ref: 100,           // glucemia de referencia para la dosis
-  pasoArriba: 100,    // +1 UI por cada 100 por encima de ref
-  pasoAbajo: 30,      // -1 UI por cada 30 por debajo de ref
-  noPincharBajoDe: 50,
+  // Ajustes por tramos: más de 200 +1, más de 300 +2, más de 400 +3; menos de 70 -1
+  tramosArriba: [[400, 3], [300, 2], [200, 1]],
+  tramosAbajo: [[70, -1]],
+  noPincharBajoDe: 40,
   normalMin: 90,      // 90-110: insulina a la vez que la comida
   normalMax: 110,
   comidaTrasGlucemia: 15, // minutos
@@ -624,12 +624,11 @@ const PAUTA = {
   lenta: 11
 };
 
-function roundHalfUp(x){ return Math.floor(x + 0.5); }
-
 function bolo1Dose(g){
   if(g < PAUTA.noPincharBajoDe) return 0;
-  if(g >= PAUTA.ref) return PAUTA.baseBolo1 + roundHalfUp((g - PAUTA.ref) / PAUTA.pasoArriba);
-  return Math.max(0, PAUTA.baseBolo1 - roundHalfUp((PAUTA.ref - g) / PAUTA.pasoAbajo));
+  for(const [limite, ajuste] of PAUTA.tramosArriba) if(g > limite) return PAUTA.baseBolo1 + ajuste;
+  for(const [limite, ajuste] of PAUTA.tramosAbajo) if(g < limite) return PAUTA.baseBolo1 + ajuste;
+  return PAUTA.baseBolo1;
 }
 
 function isCena(date){ return date.getHours() >= 16; }
