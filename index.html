@@ -469,11 +469,37 @@ function loadRangePrefs(){
 document.getElementById('rangeMin').addEventListener('change', e=>{ localStorage.setItem('range_min', e.target.value); drawGlucoseChart(); });
 document.getElementById('rangeMax').addEventListener('change', e=>{ localStorage.setItem('range_max', e.target.value); drawGlucoseChart(); });
 
+// ---------- Hora por defecto de los formularios ----------
+// La app puede quedarse horas en segundo plano: la hora se pone al día al volver,
+// salvo que el cuidador la haya cambiado a mano.
+const TIME_FIELDS = ['glucoseTime', 'feedingTime'];
+TIME_FIELDS.forEach(id=>{
+  document.getElementById(id).addEventListener('input', e=>{ e.target.dataset.edited = '1'; });
+});
+function refreshDefaultTimes(){
+  TIME_FIELDS.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el.dataset.edited !== '1') el.value = nowLocalInputValue();
+  });
+  updateGlucosePlanPreview();
+}
+function resetTimeField(id){
+  const el = document.getElementById(id);
+  delete el.dataset.edited;
+  el.value = nowLocalInputValue();
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible') refreshDefaultTimes();
+});
+window.addEventListener('focus', refreshDefaultTimes);
+setInterval(refreshDefaultTimes, 30000);
+
 // ---------- Navegación ----------
 function goTo(view){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+view).classList.add('active');
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
+  refreshDefaultTimes();
   if(view === 'glucemia') drawGlucoseChart();
 }
 document.querySelectorAll('.tab-btn').forEach(btn=>{
@@ -675,7 +701,7 @@ document.getElementById('glucoseForm').addEventListener('submit', async e=>{
   if(error){ showToast('Error: ' + error.message); return; }
   e.target.reset();
   document.getElementById('glucoseIsMeal').checked = true;
-  document.getElementById('glucoseTime').value = nowLocalInputValue();
+  resetTimeField('glucoseTime');
   updateGlucosePlanPreview();
   showToast('Lectura guardada');
   goTo('inicio');
@@ -859,7 +885,7 @@ document.getElementById('feedingForm').addEventListener('submit', async e=>{
   });
   if(error){ showToast('Error: ' + error.message); return; }
   e.target.reset();
-  document.getElementById('feedingTime').value = nowLocalInputValue();
+  resetTimeField('feedingTime');
   if(feedingKind==='insulina') suggestInsulin();
   showToast('Registro guardado');
 });
