@@ -609,15 +609,15 @@ async function deleteCaregiver(id){
 // ---------- Pauta de insulina ----------
 // Debe coincidir con supabase/functions/send-reminders/index.ts
 const PAUTA = {
-  baseBolo1: 5,       // dosis base del 1er bolo
-  // Ajustes por tramos: más de 200 +1, más de 300 +2, más de 400 +3; menos de 70 -1
-  tramosArriba: [[400, 3], [300, 2], [200, 1]],
-  tramosAbajo: [[70, -1]],
-  noPincharBajoDe: 40,
-  normalMin: 90,      // 90-110: insulina a la vez que la comida
-  normalMax: 110,
+  // 1er bolo por tramos: [glucemia máxima del tramo (incluida), UI]
+  tramosBolo1: [[40, 2], [54, 3], [69, 4], [84, 4.5], [249, 5], [275, 5.5], [300, 6], [350, 6.5], [400, 7], [450, 7.5]],
+  porEncimaDeTabla: [50, 0.5], // más de 450: +0,5 UI por cada 50 (o fracción)
+  noPincharBajoDe: 25,
   comidaTrasGlucemia: 15, // minutos
-  margenInsulina: 5,      // minutos antes (alta) o después (baja) de comer
+  // Momento del 1er bolo respecto a la comida: [si la glucemia es mayor que X, minutos]
+  // (negativo = antes de comer). Más de 200 → 10 antes; 100–200 → a la vez;
+  // 50–99 → 15 después; 25–49 → 25 después
+  momentoBolo1: [[200, -10], [99, 0], [49, 15], [-Infinity, 25]],
   bolo2TrasBolo1: 120,    // minutos
   bolo2Comida: 7,
   bolo2Cena: 3,
@@ -626,10 +626,13 @@ const PAUTA = {
 
 function bolo1Dose(g){
   if(g < PAUTA.noPincharBajoDe) return 0;
-  for(const [limite, ajuste] of PAUTA.tramosArriba) if(g > limite) return PAUTA.baseBolo1 + ajuste;
-  for(const [limite, ajuste] of PAUTA.tramosAbajo) if(g < limite) return PAUTA.baseBolo1 + ajuste;
-  return PAUTA.baseBolo1;
+  for(const [max, ui] of PAUTA.tramosBolo1) if(g <= max) return ui;
+  const [ultimoMax, ultimaUI] = PAUTA.tramosBolo1[PAUTA.tramosBolo1.length - 1];
+  const [paso, extra] = PAUTA.porEncimaDeTabla;
+  return ultimaUI + extra * Math.ceil((g - ultimoMax) / paso);
 }
+
+function ui(n){ return String(n).replace('.', ','); }
 
 function isCena(date){ return date.getHours() >= 16; }
 
@@ -642,9 +645,9 @@ function mealPlan(g, measuredAt){
   const dose = bolo1Dose(g);
   let insulinAt = null, cuando = '';
   if(dose > 0){
-    if(g > PAUTA.normalMax){ insulinAt = new Date(comida.getTime() - PAUTA.margenInsulina*60000); cuando = '5 min antes de comer, glucemia alta'; }
-    else if(g < PAUTA.normalMin){ insulinAt = new Date(comida.getTime() + PAUTA.margenInsulina*60000); cuando = '5 min después de comer, glucemia baja'; }
-    else { insulinAt = comida; cuando = 'a la vez que la comida'; }
+    const [, mins] = PAUTA.momentoBolo1.find(([mayorQue]) => g > mayorQue);
+    insulinAt = new Date(comida.getTime() + mins*60000);
+    cuando = mins < 0 ? `${-mins} min antes de comer` : mins === 0 ? 'a la vez que la comida' : `${mins} min después de comer`;
   }
   const cena = isCena(t);
   return {
@@ -663,7 +666,7 @@ function mealPlanHtml(p){
   }
   return `<div class="card" style="margin:10px 0;">
     <div>🍽️ ${p.cena ? 'Cena' : 'Comida'}: <strong>${hm(p.comida)}</strong></div>
-    <div>💉 1er bolo: <strong>${p.dose} UI</strong> a las <strong>${hm(p.insulinAt)}</strong> <span class="muted">(${p.cuando})</span></div>
+    <div>💉 1er bolo: <strong>${ui(p.dose)} UI</strong> a las <strong>${hm(p.insulinAt)}</strong> <span class="muted">(${p.cuando})</span></div>
     <div>💉 2º bolo: <strong>${p.bolo2Dose} UI</strong> a las <strong>${hm(p.bolo2At)}</strong> <span class="muted">(2 h después del 1er bolo)</span></div>
   </div>`;
 }
@@ -862,7 +865,7 @@ function suggestInsulin(){
       hint.innerHTML = `<span style="color:var(--danger)">⚠️ Glucemia ${g.value_mgdl} (menos de ${PAUTA.noPincharBajoDe}): NO pinchar.</span>`;
     } else {
       unitsEl.value = d;
-      hint.textContent = `Según la glucemia de ${g.value_mgdl} de las ${hm(new Date(g.measured_at))}: ${d} UI.`;
+      hint.textContent = `Según la glucemia de ${g.value_mgdl} de las ${hm(new Date(g.measured_at))}: ${ui(d)} UI.`;
     }
   }
 }
@@ -901,7 +904,7 @@ async function quickAddFeeding(kind){
 function feedingLabel(f){
   if(f.kind !== 'insulina') return '🍽️ Comida';
   const tipo = f.insulin_type ? insulinTypeLabels[f.insulin_type] : 'Insulina';
-  return `💉 ${tipo}${f.insulin_units ? ' · ' + f.insulin_units + ' UI' : ''}`;
+  return `💉 ${tipo}${f.insulin_units ? ' · ' + ui(f.insulin_units) + ' UI' : ''}`;
 }
 
 let feedingFilter = 'todos';
@@ -1028,7 +1031,7 @@ function renderTodayTimeline(){
   state.feedings.forEach(f=>{
     if(isToday(f.given_at)){
       const tipo = f.insulin_type ? insulinTypeLabels[f.insulin_type] : 'Insulina';
-      const label = f.kind === 'insulina' ? `${tipo}${f.insulin_units ? ' · ' + f.insulin_units + ' UI' : ''}` : 'Comida';
+      const label = f.kind === 'insulina' ? `${tipo}${f.insulin_units ? ' · ' + ui(f.insulin_units) + ' UI' : ''}` : 'Comida';
       items.push({ t: new Date(f.given_at), icon: f.kind === 'insulina' ? '💉' : '🍽️', label, sub: f.description || '', caregiver: f.caregiver_name });
     }
   });
