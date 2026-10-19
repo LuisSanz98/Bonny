@@ -614,6 +614,8 @@ const PAUTA = {
   porEncimaDeTabla: [50, 0.5], // más de 450: +0,5 UI por cada 50 (o fracción)
   noPincharBajoDe: 25,
   comidaTrasGlucemia: 15, // minutos
+  comidaTrasGlucemiaBaja: 5, // minutos, si la glucemia es menor de 100 (no retrasar la comida)
+  umbralComidaPronto: 100,
   // Momento del 1er bolo respecto a la comida: [si la glucemia es mayor que X, minutos]
   // (negativo = antes de comer). Más de 200 → 10 antes; 100–200 → a la vez;
   // 50–99 → 15 después; 25–49 → 25 después
@@ -641,7 +643,8 @@ function hm(date){ return date.toLocaleTimeString('es-ES', {hour:'2-digit', minu
 // Devuelve la pauta completa de una toma a partir de su glucemia
 function mealPlan(g, measuredAt){
   const t = new Date(measuredAt);
-  const comida = new Date(t.getTime() + PAUTA.comidaTrasGlucemia*60000);
+  const minComida = g < PAUTA.umbralComidaPronto ? PAUTA.comidaTrasGlucemiaBaja : PAUTA.comidaTrasGlucemia;
+  const comida = new Date(t.getTime() + minComida*60000);
   const dose = bolo1Dose(g);
   let insulinAt = null, cuando = '';
   if(dose > 0){
