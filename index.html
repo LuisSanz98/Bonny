@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Bonny</title>
 <meta name="theme-color" content="#1b6d6d">
-<meta name="app-version" content="2026-10-19-1">
+<meta name="app-version" content="2026-10-19-2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Bonny">
@@ -366,6 +366,7 @@
 
     <div class="card">
       <h2>Acerca de</h2>
+      <p class="muted" id="appVersionLabel"></p>
       <p class="muted">Los datos se guardan en una base de datos compartida (Supabase) y se sincronizan al instante entre todos los cuidadores que tengan el enlace. No hay contraseñas individuales: trata el enlace de esta app como algo privado de la familia.</p>
     </div>
   </div>
@@ -661,7 +662,18 @@ function mealPlan(g, measuredAt){
   };
 }
 
-function mealPlanHtml(p){
+// Insulina de la toma ya registrada (mismas ventanas que el servidor: 1er bolo hasta 90 min
+// después de la glucemia, 2º bolo hasta 6 h después)
+function registeredDose(type, measuredAt, windowMin){
+  const t = new Date(measuredAt).getTime();
+  return state.feedings
+    .filter(f=>f.kind==='insulina' && f.insulin_type===type)
+    .map(f=>({...f, ms: new Date(f.given_at).getTime()}))
+    .filter(f=>f.ms >= t && f.ms <= t + windowMin*60000)
+    .sort((a,b)=>a.ms-b.ms)[0] || null;
+}
+
+function mealPlanHtml(p, done = {}){
   if(p.dose === 0){
     return `<div class="card" style="border-color:var(--danger); margin:10px 0;">
       <strong style="color:var(--danger)">⚠️ Glucemia ${p.g} (menos de ${PAUTA.noPincharBajoDe}): NO pinchar el 1er bolo</strong>
@@ -670,8 +682,12 @@ function mealPlanHtml(p){
   }
   return `<div class="card" style="margin:10px 0;">
     <div>🍽️ ${p.cena ? 'Cena' : 'Comida'}: <strong>${hm(p.comida)}</strong></div>
-    <div>💉 1er bolo: <strong>${ui(p.dose)} UI</strong> a las <strong>${hm(p.insulinAt)}</strong> <span class="muted">(${p.cuando})</span></div>
-    <div>💉 2º bolo: <strong>${p.bolo2Dose} UI</strong> a las <strong>${hm(p.bolo2At)}</strong> <span class="muted">(2 h después del 1er bolo)</span></div>
+    ${done.bolo1
+      ? `<div>✅ 1er bolo: <strong>${ui(done.bolo1.insulin_units ?? p.dose)} UI</strong> puesto a las <strong>${hm(new Date(done.bolo1.given_at))}</strong></div>`
+      : `<div>💉 1er bolo: <strong>${ui(p.dose)} UI</strong> a las <strong>${hm(p.insulinAt)}</strong> <span class="muted">(${p.cuando})</span></div>`}
+    ${done.bolo2
+      ? `<div>✅ 2º bolo: <strong>${ui(done.bolo2.insulin_units ?? p.bolo2Dose)} UI</strong> puesto a las <strong>${hm(new Date(done.bolo2.given_at))}</strong></div>`
+      : `<div>💉 2º bolo: <strong>${p.bolo2Dose} UI</strong> a las <strong>${hm(done.bolo1 ? new Date(new Date(done.bolo1.given_at).getTime() + PAUTA.bolo2TrasBolo1*60000) : p.bolo2At)}</strong> <span class="muted">(2 h después del 1er bolo)</span></div>`}
   </div>`;
 }
 
@@ -1059,7 +1075,10 @@ function renderCurrentPlan(){
   card.style.display = 'block';
   document.getElementById('currentPlanSource').textContent =
     `Glucemia ${g.value_mgdl} a las ${hm(new Date(g.measured_at))} (${g.caregiver_name})`;
-  document.getElementById('currentPlanBox').innerHTML = mealPlanHtml(mealPlan(g.value_mgdl, g.measured_at));
+  document.getElementById('currentPlanBox').innerHTML = mealPlanHtml(mealPlan(g.value_mgdl, g.measured_at), {
+    bolo1: registeredDose('bolo1', g.measured_at, 90),
+    bolo2: registeredDose('bolo2', g.measured_at, 360)
+  });
 }
 
 function renderDashboard(){
@@ -1149,6 +1168,7 @@ function escapeHtml(str){
 // GitHub Pages deja que el móvil guarde la página 10 min; al abrir la app se comprueba
 // si hay una versión publicada más nueva y, si la hay, se recarga saltándose la caché.
 const APP_VERSION = document.querySelector('meta[name="app-version"]').content;
+document.getElementById('appVersionLabel').textContent = 'Versión ' + APP_VERSION;
 
 function userIsTyping(){
   return ['glucoseValue','glucoseNotes','feedingDescription','noteText','newCaregiverName','reminderLabel']
