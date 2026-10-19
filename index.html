@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Bonny</title>
 <meta name="theme-color" content="#1b6d6d">
+<meta name="app-version" content="2026-10-19-1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Bonny">
@@ -1143,6 +1144,33 @@ function escapeHtml(str){
   if(str===null || str===undefined) return '';
   return String(str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+
+// ---------- Actualización automática ----------
+// GitHub Pages deja que el móvil guarde la página 10 min; al abrir la app se comprueba
+// si hay una versión publicada más nueva y, si la hay, se recarga saltándose la caché.
+const APP_VERSION = document.querySelector('meta[name="app-version"]').content;
+
+function userIsTyping(){
+  return ['glucoseValue','glucoseNotes','feedingDescription','noteText','newCaregiverName','reminderLabel']
+    .some(id=>{ const el = document.getElementById(id); return el && el.value.trim() !== ''; });
+}
+
+async function checkForUpdate(){
+  try{
+    const res = await fetch('index.html?check=' + Date.now(), {cache: 'no-store'});
+    if(!res.ok) return;
+    const m = (await res.text()).match(/<meta name="app-version" content="([^"]+)"/);
+    if(!m || m[1] === APP_VERSION || userIsTyping()) return;
+    // Evita bucles si el servidor aún sirve la versión vieja tras recargar
+    let tried = null;
+    try{ tried = sessionStorage.getItem('reloaded_for'); }catch(e){}
+    if(tried === m[1]) return;
+    try{ sessionStorage.setItem('reloaded_for', m[1]); }catch(e){}
+    location.replace(location.pathname + '?v=' + encodeURIComponent(m[1]));
+  }catch(e){ /* sin conexión: seguimos con la versión actual */ }
+}
+checkForUpdate();
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') checkForUpdate(); });
 
 boot();
 setInterval(()=>{ if(sb) renderDashboard(); }, 30000);
